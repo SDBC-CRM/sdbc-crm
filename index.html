@@ -426,16 +426,25 @@ body {
 .modal-field.full { grid-column: 1 / -1; }
 .modal-field label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
 .modal-field input, .modal-field select, .modal-field textarea {
-  background: var(--navy-mid);
+  background: var(--navy-mid) !important;
   border: 1px solid var(--border);
   border-radius: 6px;
-  color: var(--text);
+  color: var(--text) !important;
   padding: 0.5rem 0.7rem;
   font-family: 'DM Sans', sans-serif;
   font-size: 0.83rem;
   outline: none;
   transition: border-color 0.2s;
   width: 100%;
+  -webkit-text-fill-color: var(--text) !important;
+  caret-color: var(--text);
+}
+.modal-field input:-webkit-autofill,
+.modal-field input:-webkit-autofill:hover,
+.modal-field input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px var(--navy-mid) inset !important;
+  -webkit-text-fill-color: var(--text) !important;
+  caret-color: var(--text);
 }
 .modal-field input:focus, .modal-field select:focus, .modal-field textarea:focus { border-color: var(--sky); }
 .modal-field select option { background: var(--navy-mid); }
@@ -585,8 +594,8 @@ body {
     </div>
     <div class="divider"></div>
     <div class="supabase-banner">
-      <strong>📡 Draft Mode</strong><br>
-      Showing your most recent 500 leads. Full cloud sync via <a href="https://supabase.com" target="_blank">Supabase</a> coming next.
+      <strong>🟢 Live Mode</strong><br>
+      Connected to Supabase. Data syncs in real time across all devices.
     </div>
   </div>
 
@@ -808,8 +817,8 @@ async function initData() {
   showLoadingOverlay(true);
   try {
     // Check if DB is empty — if so, seed with spreadsheet data
-    const existing = await sbFetch('GET', 'leads?select=id&limit=1', null);
-    if (!existing || existing.length === 0) {
+    const existing = await sbFetch('GET', 'leads?select=id&limit=100', null);
+    if (!existing || existing.length < 100) {
       showLoadingOverlay(true, 'Importing 5,937 leads — this will take about a minute…');
       // Seed in batches of 100
       const seedLeads = SEED_DATA.map(l => ({
@@ -1380,43 +1389,21 @@ async function maybeCreateCalendarEvent(lead, previousStatus) {
   showCalToast('📅 Creating calendar event…', 'info');
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        system: 'You are a calendar assistant. When asked to create a Google Calendar event, use the Google Calendar MCP tool to do so. Respond only with a brief confirmation or error message.',
-        messages: [{ role: 'user', content: `Create a Google Calendar event with these exact details:
-- Calendar ID: ${calendarId}
-- Title: ${title}
-- Start time: ${startTime} (America/Los_Angeles timezone)
-- End time: ${endTime} (America/Los_Angeles timezone)  
-- Description: ${desc}
-- Time zone: America/Los_Angeles
+    // Build Google Calendar quick-add URL and open it
+    const startISO = startTime.replace(/[-:]/g, '').replace('T', 'T').slice(0,15);
+    const endISO   = endTime.replace(/[-:]/g, '').replace('T', 'T').slice(0,15);
+    const gcalUrl  = 'https://calendar.google.com/calendar/render?action=TEMPLATE' +
+      '&text=' + encodeURIComponent(title) +
+      '&dates=' + startISO + '/' + endISO +
+      '&details=' + encodeURIComponent(desc) +
+      '&ctz=America/Los_Angeles';
 
-Please create this event now using the create_event tool.` }],
-        mcp_servers: [{
-          type: 'url',
-          url: 'https://calendarmcp.googleapis.com/mcp/v1',
-          name: 'google-calendar'
-        }]
-      })
-    });
-
-    const data = await response.json();
-    const textBlock = data.content && data.content.find(c => c.type === 'text');
-    const msg = textBlock ? textBlock.text : '';
-
-    if (msg.toLowerCase().includes('error') || msg.toLowerCase().includes('fail')) {
-      showCalToast('⚠️ Calendar event may not have been created. Check your calendar.', 'warn');
-    } else {
-      const calName = calendarId === CAL_BELLA_LUNA ? 'Bella Luna' : 'Other SDBC Yachts';
-      showCalToast(`✅ Calendar event added to "${calName}"`, 'success');
-    }
+    const calName = calendarId === CAL_BELLA_LUNA ? 'Bella Luna' : 'Other SDBC Yachts';
+    showCalToast(`📅 Opening Google Calendar to create event on "${calName}" — please save it there.`, 'info', 7000);
+    setTimeout(() => window.open(gcalUrl, '_blank'), 800);
   } catch(e) {
     console.error('Calendar error:', e);
-    showCalToast('⚠️ Could not reach calendar service.', 'warn');
+    showCalToast('⚠️ Could not open calendar.', 'warn');
   }
 }
 
